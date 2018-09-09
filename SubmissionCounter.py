@@ -74,23 +74,37 @@ while totalSubmissionsProcessed < MAX_SUBMISSIONS_PULL:
 		submissionsBeforeMonday += 1
 	totalSubmissionsProcessed += 1
 
+reportMessage = ""
+
 # Sort submitters by username, then for all with three or more posts, print out the total count and the dates of the posts.
 for key in sorted(submissions.items()):
 	author = key[0]
-	if len(submissions[author]) >= 4:
-		datesstring = ""
+	if len(submissions[author]) > 3:
+		selfCount = 0
+		linkCount = 0
 		for id in submissions[author]:
 			if submissions[author][id]["is_self"]:
-				datesstring += "Self-Post: " + submissions[author][id]["title"][0:30] 
+				selfCount += 1
 			else:
-				datesstring += "Link to: " + submissions[author][id]["url"][0:30]
-			datesstring += time.strftime(" at %a %b %d ", time.gmtime(submissions[author][id]["time"])) + "\n"
-		print(author, ":", len(submissions[author]))
-		print(datesstring)
+				linkCount += 1
+		if (selfCount > 3 or linkCount > 3):
+			postingHistory = ""
+			for id in submissions[author]:
+				if submissions[author][id]["is_self"]:
+					postingHistory += "Self-Post: " + submissions[author][id]["title"][0:30] 
+				else:
+					postingHistory += "Link to: " + submissions[author][id]["url"][0:30]
+				postingHistory += time.strftime(" on %a %b %d ", time.gmtime(submissions[author][id]["time"])) + "  \n"
+			print(author, ":", len(submissions[author]))
+			reportMessage += "\n \\u\\" + author + " submitted " + str(len(submissions[author])) + " posts.\n\n"
+			print(postingHistory)
+			reportMessage += postingHistory
 
 print("Complete - reviewed ", totalSubmissionsProcessed, " posts")
 print(submissionsAlreadySeen, " were from this week, but already seen")
 print(submissionsBeforeMonday, " were from last week")
+
+reportMessage += "Reviewed " + str(totalSubmissionsProcessed) + " submissions, of which " + str(totalSubmissionsProcessed - submissionsBeforeMonday) + " were from this week."
 
 try:
 	fileObject = open(PREFERRED_SAVE_FILE_NAME,'wb') 
@@ -103,5 +117,8 @@ try:
 	fileObject.close()
 except Exception as e:
 	print("Failed to open ", PREFERRED_SAVE_FILE_NAME, ";", e)
+
+phoenixRite = praw.models.Redditor(reddit, name="PhoenixRite")
+phoenixRite.message("Bot Message", reportMessage)
 
 #input('Press ENTER to exit')  # If you are running this code in an environment where it exits the window as soon as execution is complete, uncomment this line.
