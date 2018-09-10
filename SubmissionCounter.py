@@ -30,10 +30,10 @@ def whenWasLastMonday():
 
 reddit = praw.Reddit(client_id=Secrets.CLIENT_ID, client_secret=Secrets.CLIENT_SECRET, username=Secrets.REDDIT_USERNAME, password=Secrets.REDDIT_PASSWORD, user_agent='/r/Catholicism helper bot')
 
-subreddit = reddit.subreddit('catholicism')
-#tellMeEverything(subreddit)
+rCatholicism = reddit.subreddit('catholicism')
+#tellMeEverything(rCatholicism)
 
-newsubmissions = subreddit.new(limit=None)
+newsubmissions = rCatholicism.new(limit=None)
 #tellMeEverything(newsubmissions)
 
 PREFERRED_SAVE_FILE_NAME = "submissionsListSerialized.data"  # Whatever you want to call the filename where it saves the dict submissions
@@ -47,9 +47,18 @@ except Exception as e:
 	print("Failed to load from ", PREFERRED_SAVE_FILE_NAME, "; ", e)
 
 lastMonday = whenWasLastMonday()
+
+# Clean out last week's tracking
+for author in submissions.keys():
+	for postID in submissions[author].copy().keys():
+		if submissions[author][postID]["time"] < lastMonday:
+			del submissions[author][postID]
+
+# Track stats on all new posts from this week
 totalSubmissionsProcessed = 0
 submissionsAlreadySeen = 0
 submissionsBeforeMonday = 0
+totalReportsSentToModqueue = 0
 while totalSubmissionsProcessed < MAX_SUBMISSIONS_PULL:
 	try:
 		submission = next(newsubmissions)
@@ -67,7 +76,7 @@ while totalSubmissionsProcessed < MAX_SUBMISSIONS_PULL:
 			if submissionID in submissions[author].keys():
 				submissionsAlreadySeen += 1
 			else:
-				submissions[author][submissionID] = {"title": str(submission.title), "time": round(float(submission.created_utc)), "is_self": submission.is_self, "url": submission.url}
+				submissions[author][submissionID] = {"title": str(submission.title), "time": round(float(submission.created_utc)), "is_self": submission.is_self, "url": submission.url, "reported_yet": False}
 		#else:	
 			#tellMeEverything(submission)
 	else:
@@ -93,16 +102,48 @@ for key in sorted(submissions.items()):
 				if submissions[author][id]["is_self"]:
 					postingHistory += "Self-Post: " + submissions[author][id]["title"][0:30] 
 				else:
-					postingHistory += "Link to: " + submissions[author][id]["url"][0:30]
-				postingHistory += time.strftime(" on %a %b %d ", time.gmtime(submissions[author][id]["time"])) + "  \n"
+					url = submissions[author][id]["url"]
+					for prefix in ["https://", "http://", "www."]:
+						if url.startswith(prefix):
+							url = url[len(prefix):]
+					postingHistory += "Link to: " + url[0:30]
+				postingHistory += time.strftime(" on %a, %b %d ", time.gmtime(submissions[author][id]["time"])) + "  \n"
 			print(author, ":", len(submissions[author]))
-			reportMessage += "\n \\u\\" + author + " submitted " + str(len(submissions[author])) + " posts.\n\n"
-			print(postingHistory)
-			reportMessage += postingHistory
+			reportMessage += "/u/" + author + " submitted " + str(len(submissions[author])) + " posts.\n\n"
+			print(postingHistory, "\n")
+			reportMessage += postingHistory + "\n"
+
+			if selfCount > 3:
+				dates = [];
+				for id in submissions[author]:
+					if submissions[author][id]["is_self"]:
+						dates.append(submissions[author][id]["time"])
+				dates.sort()
+				threshold = dates[3]
+				for id in submissions[author]:
+					if submissions[author][id]["is_self"] and submissions[author][id]["time"] >= threshold:
+						reportText = "(BOT) This appears to be the " + str(dates.index(submissions[author][id]["time"]) + 1) + "th self post by /u/" + author + " since " + time.strftime("%A, %b %d ", time.gmtime(lastMonday))
+						print(reportText)
+						#reddit.submission(id=id).report(reportText)
+						totalReportsSentToModqueue += 1
+			if linkCount > 3:
+				dates = [];
+				for id in submissions[author]:
+					if not submissions[author][id]["is_self"]:
+						dates.append(submissions[author][id]["time"])
+				dates.sort()
+				threshold = dates[3]
+				for id in submissions[author]:
+					if (not submissions[author][id]["is_self"]) and submissions[author][id]["time"] >= threshold:
+						reportText = "(BOT) This appears to be the " + str(dates.index(submissions[author][id]["time"]) + 1) + "th link post by /u/" + author + " since " + time.strftime("%A, %b %d ", time.gmtime(lastMonday))
+						print(reportText)
+						#reddit.submission(id=id).report(reportText)
+						totalReportsSentToModqueue += 1
 
 print("Complete - reviewed ", totalSubmissionsProcessed, " posts")
 print(submissionsAlreadySeen, " were from this week, but already seen")
 print(submissionsBeforeMonday, " were from last week")
+print(totalReportsSentToModqueue, "reports were sent to Modqueue")
 
 reportMessage += "Reviewed " + str(totalSubmissionsProcessed) + " submissions, of which " + str(totalSubmissionsProcessed - submissionsBeforeMonday) + " were from this week."
 
@@ -118,7 +159,8 @@ try:
 except Exception as e:
 	print("Failed to open ", PREFERRED_SAVE_FILE_NAME, ";", e)
 
-phoenixRite = praw.models.Redditor(reddit, name="PhoenixRite")
-phoenixRite.message("Bot Message", reportMessage)
+#phoenixRite = praw.models.Redditor(reddit, name="PhoenixRite")
+#phoenixRite.message("Bot Message", "This is a automatically generated message from PhoenixRite's bot. \n\n" + reportMessage)
+#rCatholicism.message("Bot Test By PhoenixRite", "This is a automatically generated message from PhoenixRite's bot. \n\n" + reportMessage)
 
 #input('Press ENTER to exit')  # If you are running this code in an environment where it exits the window as soon as execution is complete, uncomment this line.
